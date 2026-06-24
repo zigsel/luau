@@ -1,4 +1,4 @@
-//! luau-zig — complete, idiomatic Zig bindings to the Luau language.
+//! luau — complete, idiomatic Zig bindings to the Luau language.
 //!
 //! The public surface is pure Zig; the raw `translate-c` layer is internal
 //! plumbing and never exposed. Two tiers:
@@ -55,7 +55,21 @@ pub const Number = lua_mod.Number;
 pub const Integer = lua_mod.Integer;
 pub const Unsigned = lua_mod.Unsigned;
 pub const Vector = lua_mod.Vector;
-pub const CFn = lua_mod.CFn;
+
+/// Raw `extern "C"` callback typedefs — the escape hatches for low-level interop
+/// (registering a raw `lua_CFunction`, the userdata fast-paths). Kept out of the
+/// top-level surface so it stays pure idiomatic Zig; reach for these only when a
+/// helper like `setFn`/`registerType` doesn't fit.
+pub const raw = struct {
+    const misc = @import("lua/misc.zig");
+    pub const CFn = lua_mod.CFn;
+    pub const Continuation = lua_mod.Continuation;
+    pub const Destructor = misc.Destructor;
+    pub const UserdataDirectAccess = misc.UserdataDirectAccess;
+    pub const UserdataDirectNamecall = misc.UserdataDirectNamecall;
+    pub const UserdataDirectFieldGet = misc.UserdataDirectFieldGet;
+    pub const CompileConstant = @import("lua/compiler.zig").CompileConstant;
+};
 
 // ---- compiler & native codegen ----------------------------------------------
 

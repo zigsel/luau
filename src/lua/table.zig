@@ -42,12 +42,54 @@ pub const Table = struct {
         return value.pull(V, self.lua, -1);
     }
 
+    /// `t[key]` as `V`, or `default` if the key is missing or the wrong type.
+    pub fn getOr(self: Table, comptime V: type, key: [:0]const u8, default: V) V {
+        return self.get(V, key) catch default;
+    }
+
     /// `t[key] = val` for any marshalled Zig value.
     pub fn set(self: Table, key: [:0]const u8, val: anytype) void {
         self.push();
         defer self.lua.pop(1);
         value.push(self.lua, val);
         self.lua.setField(-2, key); // table is below the just-pushed value
+    }
+
+    /// Nested read: `t[a][b]…` as `V`. `path` is a list of string keys.
+    /// `t.getPath(f64, &.{ "player", "pos", "x" })`.
+    pub fn getPath(self: Table, comptime V: type, path: []const [:0]const u8) value.Error!V {
+        const lua = self.lua;
+        self.push(); // container at -1; each step replaces it with the child
+        for (path) |key| {
+            if (!lua.isTable(-1)) {
+                lua.pop(1);
+                return error.LuaTypeMismatch;
+            }
+            _ = lua.getField(-1, key);
+            lua.remove(-2); // drop the parent, keep the child/value
+        }
+        defer lua.pop(1); // the final value
+        return value.pull(V, lua, -1);
+    }
+
+    /// Nested write: `t[a][b]… = val`, creating intermediate tables as needed.
+    pub fn setPath(self: Table, path: []const [:0]const u8, val: anytype) void {
+        std.debug.assert(path.len > 0);
+        const lua = self.lua;
+        self.push(); // current container at -1
+        defer lua.pop(1);
+        for (path[0 .. path.len - 1]) |key| {
+            const t = lua.getField(-1, key);
+            if (t != .table) {
+                lua.pop(1); // drop the non-table
+                lua.newTable();
+                lua.pushValue(-1); // keep a copy to assign back
+                lua.setField(-3, key); // parent[key] = newtable
+            }
+            lua.remove(-2); // descend: drop parent, keep child
+        }
+        value.push(lua, val);
+        lua.setField(-2, path[path.len - 1]);
     }
 
     /// `#t` (array length).

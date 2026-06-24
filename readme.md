@@ -1,4 +1,4 @@
-# luau-zig
+# luau
 
 Idiomatic [Zig](https://ziglang.org) bindings to [Luau](https://luau.org),
 Roblox's typed Lua dialect. Built against **Luau 0.726** with **Zig 0.16**.
@@ -26,12 +26,17 @@ in **[coverage.md](coverage.md)**.
   allocations (parser/checker/…) through one too.
 - **Errors, not codes** — protected calls return Zig error unions.
 - **Comptime marshalling** — push/pull any Zig type: ints, floats, bools, enums,
-  optionals, slices, structs ↔ tables, tuples ↔ multiple returns.
+  optionals, strings, **lists/arrays ↔ tables**, structs ↔ tables, **tagged
+  unions ↔ variants**, tuples ↔ multiple returns.
 - **Real function signatures** — expose `fn(a: f64, b: f64) f64` directly; args
-  are pulled from the stack, results pushed, a returned `error` raised as a Luau
-  error.
+  pulled from the stack, results pushed, a returned `error` raised as a Luau
+  error. Plus **closures** (`setCapture` bundles captured state) and
+  **overloading** (`setOverload(.{f0, f1})`, dispatched by arg count).
 - **Sol-style usertypes** — `registerType(T)` binds a struct's constructor,
-  methods, fields, operators, and destructor.
+  methods, fields, **computed properties** (read-only or read/write), operators,
+  and destructor.
+- **Table ergonomics** — typed `get`/`set`, `getOr(default)`, and nested
+  `getPath`/`setPath` (`vm.globals().setPath(&.{ "a", "b" }, x)`).
 - **Full language tooling** — parse to an AST, type-check, lint, autocomplete,
   hand-emit bytecode, and JIT to native code with disassembly.
 

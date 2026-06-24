@@ -161,6 +161,15 @@ fn indexClosure(comptime T: type) lua_mod.CFn {
                     return 1;
                 }
             }
+            // computed properties: `pub const properties = .{ .name = .{ .get = …, .set = … } }`
+            if (@hasDecl(T, "properties")) {
+                inline for (@typeInfo(@TypeOf(T.properties)).@"struct".fields) |pf| {
+                    if (std.mem.eql(u8, key, pf.name)) {
+                        value.push(lua, @field(T.properties, pf.name).get(self));
+                        return 1;
+                    }
+                }
+            }
             // method lookup: methods live in the metatable's "__methods" subtable
             _ = c.luaL_getmetatable(lua.toRaw(), metatableName(T).ptr);
             _ = lua.getField(-1, "__methods");
@@ -182,6 +191,19 @@ fn newIndexClosure(comptime T: type) lua_mod.CFn {
                     @field(self.*, f.name) = value.pull(f.type, lua, 3) catch |e|
                         lua.raiseError("cannot set field '{s}': {s}", .{ f.name, @errorName(e) });
                     return 0;
+                }
+            }
+            // property write (read-only if the property has no `set`)
+            if (@hasDecl(T, "properties")) {
+                inline for (@typeInfo(@TypeOf(T.properties)).@"struct".fields) |pf| {
+                    if (std.mem.eql(u8, key, pf.name)) {
+                        const prop = @field(T.properties, pf.name);
+                        if (!@hasField(@TypeOf(prop), "set")) lua.raiseError("property '{s}' is read-only", .{key});
+                        const Val = @typeInfo(@TypeOf(prop.set)).@"fn".params[1].type.?;
+                        prop.set(self, value.pull(Val, lua, 3) catch |e|
+                            lua.raiseError("cannot set property '{s}': {s}", .{ pf.name, @errorName(e) }));
+                        return 0;
+                    }
                 }
             }
             lua.raiseError("'{s}' is not a field of {s}", .{ key, shortName(T) });

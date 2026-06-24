@@ -131,6 +131,39 @@ pub fn setFn(lua: *Lua, name: [:0]const u8, comptime func: anytype) void {
     lua.setGlobal(name);
 }
 
+// ---- overloading: dispatch same-named functions by argument count -----------
+
+fn luauArity(comptime F: type) c_int {
+    const fi = @typeInfo(F).@"fn";
+    const has_state = fi.params.len > 0 and fi.params[0].type == *Lua;
+    return @intCast(fi.params.len - @intFromBool(has_state));
+}
+
+/// Combine several functions into one `lua_CFunction` that dispatches on the
+/// number of arguments at the call site (sol2 `overload`). `funcs` is a tuple of
+/// functions, e.g. `overload(.{ zero, one, two })`.
+pub fn overload(comptime funcs: anytype) lua_mod.CFn {
+    const fields = @typeInfo(@TypeOf(funcs)).@"struct".fields;
+    const Wrapped = struct {
+        fn call(s: ?*c.lua_State) callconv(.c) c_int {
+            const lua = Lua.fromRaw(s.?);
+            const top = lua.getTop();
+            inline for (fields) |fld| {
+                const f = @field(funcs, fld.name);
+                if (top == comptime luauArity(@TypeOf(f))) return callMarshalled(f, lua);
+            }
+            return lua.raiseError("no overload takes {d} argument(s)", .{top});
+        }
+    };
+    return Wrapped.call;
+}
+
+/// Register an overloaded function as global `name`.
+pub fn setOverload(lua: *Lua, name: [:0]const u8, comptime funcs: anytype) void {
+    lua.pushCFunction(overload(funcs), name);
+    lua.setGlobal(name);
+}
+
 // ---- capture closures: a Zig function bundled with a captured value ---------
 
 fn callMarshalledCtx(comptime func: anytype, lua: *Lua, ctx: anytype) c_int {

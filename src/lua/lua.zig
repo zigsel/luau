@@ -598,6 +598,14 @@ pub const Lua = opaque {
     pub const pull = value.pull;
     /// Set a global to any marshalled Zig value: `lua.set("x", 42)`.
     pub const set = value.set;
+    /// Read global `name` as `T`, or a default if missing/wrong type.
+    pub const getOr = value.getOr;
+    /// The globals table as an ergonomic `Table` handle (for `getPath`/`setPath`).
+    pub fn globals(lua: *Lua) @import("table.zig").Table {
+        lua.pushValue(c.LUA_GLOBALSINDEX);
+        defer lua.pop(1);
+        return @import("table.zig").Table.fromStack(lua, -1);
+    }
     /// Read a global as a `T`: `const n = try lua.get(i32, "x")`.
     pub const get = value.get;
     /// Register a Zig function as a global (auto-marshalled): `lua.setFn("add", add)`.
@@ -605,6 +613,9 @@ pub const Lua = opaque {
     /// Register a *closure*: a Zig function bundled with a captured pointer that
     /// arrives as its first parameter. `lua.setCapture("inc", &counter, inc)`.
     pub const setCapture = function.setCapture;
+    /// Register an *overloaded* function dispatched by argument count:
+    /// `lua.setOverload("f", .{ zero, one, two })`.
+    pub const setOverload = function.setOverload;
     /// Register a Zig struct as a sol-style usertype: `lua.registerType(Vec2)`.
     pub const registerType = @import("usertype.zig").registerType;
     /// Expose a Zig namespace as a Luau library: `lua.bindModule("vec", VecLib)`.

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-/// luau-zig: complete, idiomatic Zig bindings to the Luau C API.
+/// luau: complete, idiomatic Zig bindings to the Luau C API.
 ///
 /// This build:
 ///   1. compiles the vendored Luau C++ sources (Common, Ast, Bytecode, Compiler,
@@ -282,36 +282,36 @@ const config_src = &[_][]const u8{
 };
 
 const require_src = &[_][]const u8{
-    "AliasCycleTracker.cpp", "Navigation.cpp",   "PathUtilities.cpp",
-    "Require.cpp",           "RequireImpl.cpp",  "RequireNavigator.cpp",
+    "AliasCycleTracker.cpp", "Navigation.cpp",  "PathUtilities.cpp",
+    "Require.cpp",           "RequireImpl.cpp", "RequireNavigator.cpp",
 };
 
 const analysis_src = &[_][]const u8{
-    "Anyification.cpp",                    "ApplyTypeFunction.cpp",      "AstJsonEncoder.cpp",
-    "AstQuery.cpp",                        "AstUtils.cpp",               "Autocomplete.cpp",
-    "AutocompleteCore.cpp",               "BuiltinDefinitions.cpp",     "BuiltinTypeFunctions.cpp",
-    "Clone.cpp",                           "Constraint.cpp",             "ConstraintGenerator.cpp",
-    "ConstraintGraph.cpp",                "ConstraintSolver.cpp",       "ControlFlowGraph.cpp",
-    "DataFlowGraph.cpp",                   "DcrLogger.cpp",              "Def.cpp",
-    "DumpCFG.cpp",                         "EmbeddedBuiltinDefinitions.cpp", "Error.cpp",
-    "ExpectedTypeVisitor.cpp",            "FileResolver.cpp",           "FragmentAutocomplete.cpp",
-    "Frontend.cpp",                        "Generalization.cpp",         "GlobalTypes.cpp",
-    "Instantiation.cpp",                   "Instantiation2.cpp",         "IostreamHelpers.cpp",
-    "IterativeTypeFunctionTypeVisitor.cpp", "IterativeTypeVisitor.cpp",  "JsonEmitter.cpp",
-    "LValue.cpp",                          "Linter.cpp",                 "Module.cpp",
-    "NativeStackGuard.cpp",                "NonStrictTypeChecker.cpp",   "Normalize.cpp",
-    "OverloadResolver.cpp",                "Quantify.cpp",               "RecursionCounter.cpp",
-    "Refinement.cpp",                      "RequireTracer.cpp",          "Scope.cpp",
-    "Simplify.cpp",                        "StructuralTypeEquality.cpp", "Substitution.cpp",
-    "Subtyping.cpp",                       "SubtypingUnifier.cpp",       "Symbol.cpp",
-    "TableLiteralInference.cpp",           "ToDot.cpp",                  "ToString.cpp",
-    "TopoSortStatements.cpp",              "TxnLog.cpp",                 "Type.cpp",
-    "TypeArena.cpp",                       "TypeAttach.cpp",             "TypeChecker2.cpp",
-    "TypeFunction.cpp",                    "TypeFunctionError.cpp",      "TypeFunctionReductionGuesser.cpp",
-    "TypeFunctionRuntime.cpp",             "TypeFunctionRuntimeBuilder.cpp", "TypeIds.cpp",
-    "TypeInfer.cpp",                       "TypeOrPack.cpp",             "TypePack.cpp",
-    "TypePath.cpp",                        "TypeUtils.cpp",              "TypedAllocator.cpp",
-    "Unifiable.cpp",                       "Unifier.cpp",                "Unifier2.cpp",
+    "Anyification.cpp",                     "ApplyTypeFunction.cpp",          "AstJsonEncoder.cpp",
+    "AstQuery.cpp",                         "AstUtils.cpp",                   "Autocomplete.cpp",
+    "AutocompleteCore.cpp",                 "BuiltinDefinitions.cpp",         "BuiltinTypeFunctions.cpp",
+    "Clone.cpp",                            "Constraint.cpp",                 "ConstraintGenerator.cpp",
+    "ConstraintGraph.cpp",                  "ConstraintSolver.cpp",           "ControlFlowGraph.cpp",
+    "DataFlowGraph.cpp",                    "DcrLogger.cpp",                  "Def.cpp",
+    "DumpCFG.cpp",                          "EmbeddedBuiltinDefinitions.cpp", "Error.cpp",
+    "ExpectedTypeVisitor.cpp",              "FileResolver.cpp",               "FragmentAutocomplete.cpp",
+    "Frontend.cpp",                         "Generalization.cpp",             "GlobalTypes.cpp",
+    "Instantiation.cpp",                    "Instantiation2.cpp",             "IostreamHelpers.cpp",
+    "IterativeTypeFunctionTypeVisitor.cpp", "IterativeTypeVisitor.cpp",       "JsonEmitter.cpp",
+    "LValue.cpp",                           "Linter.cpp",                     "Module.cpp",
+    "NativeStackGuard.cpp",                 "NonStrictTypeChecker.cpp",       "Normalize.cpp",
+    "OverloadResolver.cpp",                 "Quantify.cpp",                   "RecursionCounter.cpp",
+    "Refinement.cpp",                       "RequireTracer.cpp",              "Scope.cpp",
+    "Simplify.cpp",                         "StructuralTypeEquality.cpp",     "Substitution.cpp",
+    "Subtyping.cpp",                        "SubtypingUnifier.cpp",           "Symbol.cpp",
+    "TableLiteralInference.cpp",            "ToDot.cpp",                      "ToString.cpp",
+    "TopoSortStatements.cpp",               "TxnLog.cpp",                     "Type.cpp",
+    "TypeArena.cpp",                        "TypeAttach.cpp",                 "TypeChecker2.cpp",
+    "TypeFunction.cpp",                     "TypeFunctionError.cpp",          "TypeFunctionReductionGuesser.cpp",
+    "TypeFunctionRuntime.cpp",              "TypeFunctionRuntimeBuilder.cpp", "TypeIds.cpp",
+    "TypeInfer.cpp",                        "TypeOrPack.cpp",                 "TypePack.cpp",
+    "TypePath.cpp",                         "TypeUtils.cpp",                  "TypedAllocator.cpp",
+    "Unifiable.cpp",                        "Unifier.cpp",                    "Unifier2.cpp",
     "UserDefinedTypeFunction.cpp",
 };
 
@@ -322,28 +322,28 @@ const compiler_src = &[_][]const u8{
 };
 
 const vm_src = &[_][]const u8{
-    "lapi.cpp",       "laux.cpp",       "lbaselib.cpp", "lbitlib.cpp",
-    "lbuffer.cpp",    "lbuflib.cpp",    "lbuiltins.cpp", "lclass.cpp",
-    "lclasslib.cpp",  "lcorolib.cpp",   "ldblib.cpp",   "ldebug.cpp",
-    "ldo.cpp",        "lfunc.cpp",      "lgc.cpp",      "lgcdebug.cpp",
-    "linit.cpp",      "lintlib.cpp",    "lmathlib.cpp", "lmem.cpp",
-    "lnumprint.cpp",  "lobject.cpp",    "loslib.cpp",   "lperf.cpp",
-    "lstate.cpp",     "lstring.cpp",    "lstrlib.cpp",  "ltable.cpp",
-    "ltablib.cpp",    "ltm.cpp",        "ludata.cpp",   "lutf8lib.cpp",
-    "lveclib.cpp",    "lvmexecute.cpp", "lvmload.cpp",  "lvmutils.cpp",
+    "lapi.cpp",      "laux.cpp",       "lbaselib.cpp",  "lbitlib.cpp",
+    "lbuffer.cpp",   "lbuflib.cpp",    "lbuiltins.cpp", "lclass.cpp",
+    "lclasslib.cpp", "lcorolib.cpp",   "ldblib.cpp",    "ldebug.cpp",
+    "ldo.cpp",       "lfunc.cpp",      "lgc.cpp",       "lgcdebug.cpp",
+    "linit.cpp",     "lintlib.cpp",    "lmathlib.cpp",  "lmem.cpp",
+    "lnumprint.cpp", "lobject.cpp",    "loslib.cpp",    "lperf.cpp",
+    "lstate.cpp",    "lstring.cpp",    "lstrlib.cpp",   "ltable.cpp",
+    "ltablib.cpp",   "ltm.cpp",        "ludata.cpp",    "lutf8lib.cpp",
+    "lveclib.cpp",   "lvmexecute.cpp", "lvmload.cpp",   "lvmutils.cpp",
 };
 
 const codegen_src = &[_][]const u8{
-    "AssemblyBuilderA64.cpp",  "AssemblyBuilderX64.cpp",     "BytecodeAnalysis.cpp",
-    "BytecodeSummary.cpp",     "CodeAllocator.cpp",          "CodeBlockUnwind.cpp",
-    "CodeGen.cpp",             "CodeGenA64.cpp",             "CodeGenAssembly.cpp",
-    "CodeGenContext.cpp",      "CodeGenUtils.cpp",           "CodeGenX64.cpp",
-    "EmitBuiltinsX64.cpp",     "EmitCommonX64.cpp",          "EmitInstructionX64.cpp",
-    "IrAnalysis.cpp",          "IrBuilder.cpp",              "IrCallWrapperX64.cpp",
-    "IrDump.cpp",              "IrLoweringA64.cpp",          "IrLoweringX64.cpp",
-    "IrRegAllocA64.cpp",       "IrRegAllocX64.cpp",          "IrTranslateBuiltins.cpp",
-    "IrTranslation.cpp",       "IrUtils.cpp",                "IrValueLocationTracking.cpp",
-    "NativeProtoExecData.cpp", "NativeState.cpp",            "OptimizeConstProp.cpp",
-    "OptimizeDeadStore.cpp",   "OptimizeFinalX64.cpp",       "SharedCodeAllocator.cpp",
-    "UnwindBuilderDwarf2.cpp", "UnwindBuilderWin.cpp",       "lcodegen.cpp",
+    "AssemblyBuilderA64.cpp",  "AssemblyBuilderX64.cpp", "BytecodeAnalysis.cpp",
+    "BytecodeSummary.cpp",     "CodeAllocator.cpp",      "CodeBlockUnwind.cpp",
+    "CodeGen.cpp",             "CodeGenA64.cpp",         "CodeGenAssembly.cpp",
+    "CodeGenContext.cpp",      "CodeGenUtils.cpp",       "CodeGenX64.cpp",
+    "EmitBuiltinsX64.cpp",     "EmitCommonX64.cpp",      "EmitInstructionX64.cpp",
+    "IrAnalysis.cpp",          "IrBuilder.cpp",          "IrCallWrapperX64.cpp",
+    "IrDump.cpp",              "IrLoweringA64.cpp",      "IrLoweringX64.cpp",
+    "IrRegAllocA64.cpp",       "IrRegAllocX64.cpp",      "IrTranslateBuiltins.cpp",
+    "IrTranslation.cpp",       "IrUtils.cpp",            "IrValueLocationTracking.cpp",
+    "NativeProtoExecData.cpp", "NativeState.cpp",        "OptimizeConstProp.cpp",
+    "OptimizeDeadStore.cpp",   "OptimizeFinalX64.cpp",   "SharedCodeAllocator.cpp",
+    "UnwindBuilderDwarf2.cpp", "UnwindBuilderWin.cpp",   "lcodegen.cpp",
 };

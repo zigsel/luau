@@ -13,7 +13,7 @@ pub fn main() !void {
 
     // run a chunk for its side effects
     try vm.doString("=config",
-        \\ name = "luau-zig"
+        \\ name = "luau"
         \\ port = 8080
         \\ debug_mode = true
     );

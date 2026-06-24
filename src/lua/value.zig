@@ -55,6 +55,13 @@ pub fn push(lua: *Lua, val: anytype) void {
             pushStructTable(lua, val);
         },
         .array => pushArrayTable(lua, val),
+        // a tagged union marshals as its active payload (sol2 `variant`/`object`).
+        .@"union" => |u| {
+            if (u.tag_type == null) @compileError("cannot push untagged union " ++ @typeName(T));
+            switch (val) {
+                inline else => |payload| push(lua, payload),
+            }
+        },
         else => @compileError("cannot push Zig type " ++ @typeName(T)),
     }
 }
@@ -102,8 +109,24 @@ pub fn pull(comptime T: type, lua: *Lua, idx: i32) Error!T {
             @compileError("cannot pull pointer type " ++ @typeName(T)),
         .array => try pullArray(T, lua, idx),
         .@"struct" => if (usertype.getInstance(lua, T, idx)) |p| p.* else try pullStruct(T, lua, idx),
+        // a tagged union: pick the first variant whose type the value satisfies.
+        .@"union" => try pullUnion(T, lua, idx),
         else => @compileError("cannot pull Zig type " ++ @typeName(T)),
     };
+}
+
+fn pullUnion(comptime T: type, lua: *Lua, idx: i32) Error!T {
+    const u = @typeInfo(T).@"union";
+    if (u.tag_type == null) @compileError("cannot pull untagged union " ++ @typeName(T));
+    inline for (u.fields) |f| {
+        if (f.type == void) {
+            // void payload: accept nil
+            if (lua.isNoneOrNil(idx)) return @unionInit(T, f.name, {});
+        } else if (pull(f.type, lua, idx)) |v| {
+            return @unionInit(T, f.name, v);
+        } else |_| {}
+    }
+    return error.LuaTypeMismatch;
 }
 
 /// Like `pull`, but with an allocator so variable-length lists (non-`u8` slices)
@@ -199,6 +222,11 @@ fn pullStructAlloc(comptime T: type, lua: *Lua, idx: i32, alloc: std.mem.Allocat
 pub fn set(lua: *Lua, name: [:0]const u8, val: anytype) void {
     push(lua, val);
     lua.setGlobal(name);
+}
+
+/// Read global `name` as a `T`, or `default` if missing / the wrong type.
+pub fn getOr(lua: *Lua, comptime T: type, name: [:0]const u8, default: T) T {
+    return get(lua, T, name) catch default;
 }
 
 /// Read global `name` as a `T`.
