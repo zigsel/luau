@@ -113,6 +113,11 @@ pub const Builder = struct {
     pub fn indexName(self: Builder, e: Node, name: [:0]const u8) Node {
         return c.luau_astbuild_index_name(self.handle, e, name.ptr).?;
     }
+    /// A colon method call `recv:name(args)` — the receiver is evaluated once and passed
+    /// as the implicit `self`. Idiomatic and side-effect-safe vs `recv.name(recv, args)`.
+    pub fn methodCall(self: Builder, recv: Node, name: [:0]const u8, args: []const Node) Node {
+        return c.luau_astbuild_method_call(self.handle, recv, name.ptr, nodePtr(args), @intCast(args.len)).?;
+    }
     pub fn group(self: Builder, e: Node) Node {
         return c.luau_astbuild_group(self.handle, e).?;
     }
@@ -272,6 +277,14 @@ pub const Builder = struct {
     /// Compile `rootBlock` (an AstStatBlock node) to bytecode. The returned
     /// slice is owned by `gpa`. On a compile error the message is logged and
     /// `error.Compile` is returned.
+    /// Pretty-print a built AST back to readable Luau source.
+    pub fn toSource(self: Builder, gpa: std.mem.Allocator, rootBlock: Node) ![]u8 {
+        const buf = c.luau_astbuild_prettyprint(self.handle, rootBlock);
+        if (buf == null) return error.PrettyPrint;
+        defer std.c.free(buf);
+        return gpa.dupe(u8, std.mem.span(@as([*:0]u8, @ptrCast(buf))));
+    }
+
     pub fn compile(self: Builder, gpa: std.mem.Allocator, rootBlock: Node) ![]u8 {
         var len: c_int = 0;
         var err: [*c]u8 = null;

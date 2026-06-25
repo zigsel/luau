@@ -67,6 +67,7 @@ LuauAstNode* luau_astbuild_binary(LuauAstBuilder* b, int op, LuauAstNode* lhs, L
 LuauAstNode* luau_astbuild_unary(LuauAstBuilder* b, int op, LuauAstNode* e);
 LuauAstNode* luau_astbuild_call(LuauAstBuilder* b, LuauAstNode* func, LuauAstNode** args, int nargs);
 LuauAstNode* luau_astbuild_index_name(LuauAstBuilder* b, LuauAstNode* expr, const char* name);
+LuauAstNode* luau_astbuild_method_call(LuauAstBuilder* b, LuauAstNode* recv, const char* name, LuauAstNode** args, int nargs);
 LuauAstNode* luau_astbuild_group(LuauAstBuilder* b, LuauAstNode* e);
 LuauAstNode* luau_astbuild_constant_integer(LuauAstBuilder* b, long long value);
 LuauAstNode* luau_astbuild_expr_local(LuauAstBuilder* b, LuauAstNode* local);
@@ -112,5 +113,8 @@ LuauAstNode* luau_astbuild_local_function(LuauAstBuilder* b, LuauAstNode* name, 
 // On success returns a malloc'd byte buffer (caller frees) and sets *out_len.
 // On failure returns NULL and sets *out_err to a malloc'd message (caller frees).
 char* luau_astbuild_compile(LuauAstBuilder* b, LuauAstNode* rootBlock, int* out_len, char** out_err);
+
+// Pretty-print a built AST back to Luau source (malloc'd C string, caller frees).
+char* luau_astbuild_prettyprint(LuauAstBuilder* b, LuauAstNode* rootBlock);
 
 LUAU_END_DECLS

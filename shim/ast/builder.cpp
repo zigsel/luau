@@ -9,9 +9,14 @@
 #include "Luau/Lexer.h"
 #include "Luau/Location.h"
 #include "Luau/ParseResult.h"
+#include "Luau/PrettyPrinter.h"
+#include "Luau/Cst.h"
 
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
+#include <cmath>
+#include <cctype>
 #include <exception>
 #include <string>
 
@@ -113,9 +118,12 @@ extern "C" LuauAstNode* luau_astbuild_constant_number(LuauAstBuilder* b, double 
 extern "C" LuauAstNode* luau_astbuild_constant_string(LuauAstBuilder* b, const char* s, size_t len) {
     AstArray<char> chars;
     chars.size = len;
-    chars.data = len ? static_cast<char*>(b->allocator.allocate(len)) : nullptr;
+    // Always hand back a non-null pointer (allocate len+1): the compiler's string
+    // table asserts data != nullptr even for empty strings (Compiler.cpp sref()).
+    chars.data = static_cast<char*>(b->allocator.allocate(len + 1));
     if (len)
         std::memcpy(chars.data, s, len);
+    chars.data[len] = '\0';
     return wrap(b->allocator.alloc<AstExprConstantString>(kLoc, chars, AstExprConstantString::QuoteStyle::QuotedSimple));
 }
 
@@ -147,6 +155,19 @@ extern "C" LuauAstNode* luau_astbuild_index_name(LuauAstBuilder* b, LuauAstNode*
     AstName n = b->names.getOrAdd(name);
     return wrap(b->allocator.alloc<AstExprIndexName>(
         kLoc, expr(e), n, kLoc, kPos, '.'));
+}
+
+// `recv:name(args)` — a colon method call: the receiver binds once and is passed as the
+// implicit self (AstExprCall.self = true). Reads idiomatically and avoids re-evaluating
+// the receiver the way `recv.name(recv, args)` would.
+extern "C" LuauAstNode* luau_astbuild_method_call(LuauAstBuilder* b, LuauAstNode* recv, const char* name, LuauAstNode** args, int nargs) {
+    AstName n = b->names.getOrAdd(name);
+    AstExpr* idx = b->allocator.alloc<AstExprIndexName>(kLoc, expr(recv), n, kLoc, kPos, ':');
+    AstArray<AstExpr*> a = exprArray(b, args, nargs);
+    AstArray<AstTypeOrPack> noTypes;
+    noTypes.data = nullptr;
+    noTypes.size = 0;
+    return wrap(b->allocator.alloc<AstExprCall>(kLoc, idx, a, /*self*/ true, noTypes, kLoc));
 }
 
 extern "C" LuauAstNode* luau_astbuild_group(LuauAstBuilder* b, LuauAstNode* e) {
@@ -336,6 +357,313 @@ extern "C" LuauAstNode* luau_astbuild_local_function(LuauAstBuilder* b, LuauAstN
     return wrap(b->allocator.alloc<AstStatLocalFunction>(kLoc, local(name), f));
 }
 
+// The builder allocates every AstLocal and AstExprFunction at functionDepth 0
+// (it can't know nesting at construction time, since the AST is built bottom-up).
+// The Luau compiler resolves upvalues by comparing a local's functionDepth to the
+// enclosing function's depth, so leaving everything at 0 makes any closure that
+// captures an outer local miscompile/crash. This pass walks the finished tree
+// top-down and stamps the correct depth on every function and local declaration,
+// which is exactly what the real parser does. Enables working closures/upvalues.
+namespace {
+struct DepthFixer : Luau::AstVisitor {
+    size_t depth = 0;
+    bool visit(Luau::AstStatLocal* s) override {
+        for (Luau::AstLocal* l : s->vars)
+            l->functionDepth = depth;
+        return true;
+    }
+    bool visit(Luau::AstExprLocal* e) override {
+        // a reference to a local declared in an enclosing function is an upvalue;
+        // the compiler asserts this flag is set (Compiler.cpp LUAU_ASSERT(expr->upvalue))
+        if (e->local)
+            e->upvalue = e->local->functionDepth < depth;
+        return true;
+    }
+    bool visit(Luau::AstStatFor* s) override {
+        if (s->var)
+            s->var->functionDepth = depth;
+        return true;
+    }
+    bool visit(Luau::AstStatForIn* s) override {
+        for (Luau::AstLocal* l : s->vars)
+            l->functionDepth = depth;
+        return true;
+    }
+    bool visit(Luau::AstStatLocalFunction* s) override {
+        if (s->name)
+            s->name->functionDepth = depth;
+        return true;
+    }
+    bool visit(Luau::AstExprFunction* fn) override {
+        // the root chunk is the implicit depth-0 "main" function, so a function
+        // literal is one level deeper than its surrounding context.
+        depth++;
+        fn->functionDepth = depth;
+        for (Luau::AstLocal* a : fn->args)
+            a->functionDepth = depth;
+        if (fn->body)
+            fn->body->visit(this);
+        depth--;
+        return false; // descended manually with the adjusted depth
+    }
+};
+} // namespace
+
+// Luau's own pretty-printer is position-driven: it reproduces spacing by `advance()`ing
+// to each node's source Location, and emits word operators (`or`/`and`) through an
+// unguarded writer that glues them to a preceding identifier (`a or 5` -> `aor 5`, which
+// is invalid). Our synthesized AST has no real positions, so rather than fabricate them
+// we emit source ourselves. This small printer walks the exact node set the builder
+// produces and is responsible for all spacing, so the output is always well-formed.
+namespace {
+// true if `s` is a valid Luau identifier and not a reserved keyword (so `.s` is legal).
+static bool identSafe(const char* s) {
+    if (!s || !*s) return false;
+    if (!(std::isalpha((unsigned char)s[0]) || s[0] == '_')) return false;
+    for (const char* p = s; *p; p++)
+        if (!(std::isalnum((unsigned char)*p) || *p == '_')) return false;
+    static const char* kw[] = {"and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+        "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while"};
+    for (const char* k : kw)
+        if (std::strcmp(s, k) == 0) return false;
+    return true;
+}
+
+struct SrcPrinter {
+    std::string out;
+    void pad(int ind) { out.append(size_t(ind) * 4, ' '); }
+
+    void str(Luau::AstArray<char> s) {
+        // single-quote unless the text contains one, then double-quote
+        char q = '\'';
+        for (size_t i = 0; i < s.size; i++)
+            if (s.data[i] == '\'') { q = '"'; break; }
+        out += q;
+        for (size_t i = 0; i < s.size; i++) {
+            char ch = s.data[i];
+            switch (ch) {
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\t': out += "\\t"; break;
+            case '\r': out += "\\r"; break;
+            default:
+                if (ch == q) { out += '\\'; out += ch; }
+                else if ((unsigned char)ch < 0x20) { char b[8]; std::snprintf(b, sizeof b, "\\%d", (unsigned char)ch); out += b; }
+                else out += ch;
+            }
+        }
+        out += q;
+    }
+    void num(double v) {
+        if (std::isinf(v)) { out += v > 0 ? "1e500" : "-1e500"; return; }
+        if (std::isnan(v)) { out += "0/0"; return; }
+        if (v == (double)(long long)v && std::fabs(v) < 9e15) { char b[32]; std::snprintf(b, sizeof b, "%lld", (long long)v); out += b; }
+        else { char b[40]; std::snprintf(b, sizeof b, "%.17g", v); out += b; }
+    }
+
+    // function tail shared by anonymous/local/named functions: `(args) <body> end`
+    void funcTail(Luau::AstExprFunction* f, int ind, bool skipSelf = false) {
+        out += '(';
+        bool first = true;
+        unsigned i = 0;
+        for (Luau::AstLocal* a : f->args) {
+            if (skipSelf && i++ == 0) continue; // `self` is implicit in a `t:m()` definition
+            if (!first) out += ", "; first = false; out += a->name.value;
+        }
+        if (f->vararg) { if (!first) out += ", "; out += "..."; }
+        out += ')';
+        block(f->body, ind + 1);
+        out += '\n'; pad(ind); out += "end";
+    }
+
+    void expr(Luau::AstExpr* e, int ind) {
+        if (auto a = e->as<Luau::AstExprGroup>()) { out += '('; expr(a->expr, ind); out += ')'; }
+        else if (e->is<Luau::AstExprConstantNil>()) out += "nil";
+        else if (auto a = e->as<Luau::AstExprConstantBool>()) out += a->value ? "true" : "false";
+        else if (auto a = e->as<Luau::AstExprConstantNumber>()) num(a->value);
+        else if (auto a = e->as<Luau::AstExprConstantInteger>()) { char b[32]; std::snprintf(b, sizeof b, "%lld", (long long)a->value); out += b; }
+        else if (auto a = e->as<Luau::AstExprConstantString>()) str(a->value);
+        else if (auto a = e->as<Luau::AstExprLocal>()) out += a->local->name.value;
+        else if (auto a = e->as<Luau::AstExprGlobal>()) out += a->name.value;
+        else if (e->is<Luau::AstExprVarargs>()) out += "...";
+        else if (auto a = e->as<Luau::AstExprCall>()) {
+            expr(a->func, ind);
+            out += '(';
+            bool first = true;
+            for (Luau::AstExpr* arg : a->args) { if (!first) out += ", "; first = false; expr(arg, ind); }
+            out += ')';
+        }
+        else if (auto a = e->as<Luau::AstExprIndexName>()) {
+            // `.name` is only valid for an identifier that isn't a reserved word;
+            // otherwise (e.g. `.then`) fall back to bracket indexing: `["then"]`.
+            if (a->op == '.' && !identSafe(a->index.value)) { expr(a->expr, ind); out += "[\""; out += a->index.value; out += "\"]"; }
+            else { expr(a->expr, ind); out += a->op; out += a->index.value; }
+        }
+        else if (auto a = e->as<Luau::AstExprIndexExpr>()) { expr(a->expr, ind); out += '['; expr(a->index, ind); out += ']'; }
+        else if (auto a = e->as<Luau::AstExprFunction>()) { out += "function"; funcTail(a, ind); }
+        else if (auto a = e->as<Luau::AstExprTable>()) {
+            out += '{';
+            bool first = true;
+            for (const auto& it : a->items) {
+                if (!first) out += ", "; first = false;
+                if (it.kind == Luau::AstExprTable::Item::Kind::Record) { out += it.key->as<Luau::AstExprConstantString>()->value.data; out += " = "; }
+                else if (it.kind == Luau::AstExprTable::Item::Kind::General) { out += '['; expr(it.key, ind); out += "] = "; }
+                expr(it.value, ind);
+            }
+            out += '}';
+        }
+        else if (auto a = e->as<Luau::AstExprUnary>()) {
+            switch (a->op) {
+            case Luau::AstExprUnary::Op::Not: out += "not "; break;
+            case Luau::AstExprUnary::Op::Minus: out += '-'; break;
+            case Luau::AstExprUnary::Op::Len: out += '#'; break;
+            }
+            // unary binds tighter than binary/if-else, so `not (a > b)` needs the parens
+            // (without them `not a > b` would parse as `(not a) > b`).
+            if (a->expr->is<Luau::AstExprBinary>() || a->expr->is<Luau::AstExprIfElse>()) { out += '('; expr(a->expr, ind); out += ')'; }
+            else expr(a->expr, ind);
+        }
+        else if (auto a = e->as<Luau::AstExprBinary>()) { expr(a->left, ind); out += ' '; out += Luau::toString(a->op); out += ' '; expr(a->right, ind); }
+        else if (auto a = e->as<Luau::AstExprIfElse>()) {
+            out += "if "; expr(a->condition, ind); out += " then "; expr(a->trueExpr, ind);
+            out += " else "; expr(a->falseExpr, ind);
+        }
+        else if (auto a = e->as<Luau::AstExprTypeAssertion>()) expr(a->expr, ind); // drop the cast; runtime is unaffected
+        else if (auto a = e->as<Luau::AstExprInterpString>()) {
+            out += '`';
+            for (size_t i = 0; i < a->strings.size; i++) {
+                Luau::AstArray<char> chunk = a->strings.data[i];
+                out.append(chunk.data, chunk.size);
+                if (i < a->expressions.size) { out += '{'; expr(a->expressions.data[i], ind); out += '}'; }
+            }
+            out += '`';
+        }
+        else out += "--[[?]]"; // unreachable for the builder's node set
+    }
+
+    void names(Luau::AstArray<Luau::AstLocal*> vars) {
+        bool first = true;
+        for (Luau::AstLocal* v : vars) { if (!first) out += ", "; first = false; out += v->name.value; }
+    }
+    void exprs(Luau::AstArray<Luau::AstExpr*> es, int ind) {
+        bool first = true;
+        for (Luau::AstExpr* e : es) { if (!first) out += ", "; first = false; expr(e, ind); }
+    }
+
+    void stat(Luau::AstStat* s, int ind) {
+        if (auto a = s->as<Luau::AstStatBlock>()) { out += "do"; block(a, ind + 1); out += '\n'; pad(ind); out += "end"; }
+        else if (auto a = s->as<Luau::AstStatLocal>()) {
+            out += "local "; names(a->vars);
+            if (a->values.size) { out += " = "; exprs(a->values, ind); }
+        }
+        else if (auto a = s->as<Luau::AstStatLocalFunction>()) { out += "local function "; out += a->name->name.value; funcTail(a->func, ind); }
+        else if (auto a = s->as<Luau::AstStatFunction>()) {
+            // a method `function t.m(self, …)` prints idiomatically as `function t:m(…)`
+            auto idx = a->name->as<Luau::AstExprIndexName>();
+            bool method = idx && idx->op == '.' && a->func->args.size >= 1 && std::strcmp(a->func->args.data[0]->name.value, "self") == 0;
+            if (method) { out += "function "; expr(idx->expr, ind); out += ':'; out += idx->index.value; funcTail(a->func, ind, true); }
+            else { out += "function "; expr(a->name, ind); funcTail(a->func, ind); }
+        }
+        else if (auto a = s->as<Luau::AstStatAssign>()) { exprs(a->vars, ind); out += " = "; exprs(a->values, ind); }
+        else if (auto a = s->as<Luau::AstStatCompoundAssign>()) { expr(a->var, ind); out += ' '; out += Luau::toString(a->op); out += "= "; expr(a->value, ind); }
+        else if (auto a = s->as<Luau::AstStatExpr>()) expr(a->expr, ind);
+        else if (auto a = s->as<Luau::AstStatReturn>()) { out += "return"; if (a->list.size) { out += ' '; exprs(a->list, ind); } }
+        else if (s->is<Luau::AstStatBreak>()) out += "break";
+        else if (s->is<Luau::AstStatContinue>()) out += "continue";
+        else if (auto a = s->as<Luau::AstStatWhile>()) { out += "while "; expr(a->condition, ind); out += " do"; block(a->body, ind + 1); out += '\n'; pad(ind); out += "end"; }
+        else if (auto a = s->as<Luau::AstStatRepeat>()) { out += "repeat"; block(a->body, ind + 1); out += '\n'; pad(ind); out += "until "; expr(a->condition, ind); }
+        else if (auto a = s->as<Luau::AstStatFor>()) {
+            out += "for "; out += a->var->name.value; out += " = "; expr(a->from, ind); out += ", "; expr(a->to, ind);
+            if (a->step) { out += ", "; expr(a->step, ind); }
+            out += " do"; block(a->body, ind + 1); out += '\n'; pad(ind); out += "end";
+        }
+        else if (auto a = s->as<Luau::AstStatForIn>()) {
+            out += "for "; names(a->vars); out += " in "; exprs(a->values, ind);
+            out += " do"; block(a->body, ind + 1); out += '\n'; pad(ind); out += "end";
+        }
+        else if (auto a = s->as<Luau::AstStatIf>()) {
+            out += "if "; expr(a->condition, ind); out += " then"; block(a->thenbody, ind + 1);
+            for (Luau::AstStat* el = a->elsebody; el;) {
+                if (auto chain = el->as<Luau::AstStatIf>()) { // `else if` -> `elseif`
+                    out += '\n'; pad(ind); out += "elseif "; expr(chain->condition, ind); out += " then"; block(chain->thenbody, ind + 1);
+                    el = chain->elsebody;
+                } else { // plain else block
+                    out += '\n'; pad(ind); out += "else"; block(el->as<Luau::AstStatBlock>(), ind + 1);
+                    el = nullptr;
+                }
+            }
+            out += '\n'; pad(ind); out += "end";
+        }
+        else out += "--[[?]]";
+    }
+
+    // Render a single statement to its own string (no leading newline/indent). Guards the
+    // Lua call ambiguity: a non-first statement that renders starting with `(` would bind
+    // as a call to the previous statement's trailing value (`x = f()` <newline> `(g)()`),
+    // so it gets a leading `;`. A first statement can't be ambiguous (it follows
+    // `do`/`then`/`=`, not a value).
+    std::string render(Luau::AstStat* s, int ind, bool first) {
+        std::string saved;
+        std::swap(saved, out);
+        stat(s, ind);
+        std::string r;
+        std::swap(r, out);
+        std::swap(saved, out);
+        if (!first && !r.empty() && r[0] == '(') r.insert(r.begin(), ';');
+        return r;
+    }
+
+    // a function literal or an IIFE wrapping one (`(function() … end)()`, e.g. a class body)
+    static bool isFuncValue(Luau::AstExpr* e) {
+        if (e->is<Luau::AstExprFunction>()) return true;
+        if (auto c = e->as<Luau::AstExprCall>()) {
+            Luau::AstExpr* f = c->func;
+            if (auto g = f->as<Luau::AstExprGroup>()) return g->expr->is<Luau::AstExprFunction>();
+            return f->is<Luau::AstExprFunction>();
+        }
+        return false;
+    }
+    // a "definition" statement: a named/local function, or a binding to a function/class.
+    static bool isDef(Luau::AstStat* s) {
+        if (s->is<Luau::AstStatFunction>() || s->is<Luau::AstStatLocalFunction>()) return true;
+        if (auto a = s->as<Luau::AstStatLocal>()) return a->values.size == 1 && isFuncValue(a->values.data[0]);
+        if (auto a = s->as<Luau::AstStatAssign>()) return a->values.size == 1 && isFuncValue(a->values.data[0]);
+        return false;
+    }
+
+    // Emit a sequence of statements, one per line. A blank line is inserted between two
+    // statements when either is a definition (function/class), so definitions stand apart
+    // while runs of ordinary statements stay grouped. `topLevel` suppresses the leading
+    // newline before the very first statement.
+    void emitStatements(Luau::AstArray<Luau::AstStat*> body, int ind, bool topLevel) {
+        for (size_t i = 0; i < body.size; i++) {
+            std::string r = render(body.data[i], ind, i == 0);
+            if (i || !topLevel) out += '\n';
+            if (i && (isDef(body.data[i]) || isDef(body.data[i - 1]))) out += '\n';
+            pad(ind);
+            out += r;
+        }
+    }
+    void block(Luau::AstStatBlock* blk, int ind) { emitStatements(blk->body, ind, false); }
+};
+} // namespace
+
+// Pretty-print a built AST back to clean, well-formed Luau source. Returns a malloc'd C string.
+extern "C" char* luau_astbuild_prettyprint(LuauAstBuilder* b, LuauAstNode* rootBlock) {
+    (void)b;
+    try {
+        AstStatBlock* root = reinterpret_cast<AstStatBlock*>(node(rootBlock)->asStat());
+        SrcPrinter p;
+        p.emitStatements(root->body, 0, /*topLevel*/ true);
+        char* buf = static_cast<char*>(std::malloc(p.out.size() + 1));
+        std::memcpy(buf, p.out.data(), p.out.size());
+        buf[p.out.size()] = '\0';
+        return buf;
+    } catch (const std::exception&) {
+        return nullptr;
+    }
+}
+
 extern "C" char* luau_astbuild_compile(LuauAstBuilder* b, LuauAstNode* rootBlock, int* out_len, char** out_err) {
     if (out_len)
         *out_len = 0;
@@ -344,6 +672,10 @@ extern "C" char* luau_astbuild_compile(LuauAstBuilder* b, LuauAstNode* rootBlock
     try {
         ParseResult parseResult;
         parseResult.root = reinterpret_cast<AstStatBlock*>(node(rootBlock)->asStat());
+
+        // assign correct nesting depths so closures resolve upvalues
+        DepthFixer depthFixer;
+        parseResult.root->visit(&depthFixer);
 
         BytecodeBuilder bcb;
         // compileOrThrow already finalizes the bytecode internally; calling
