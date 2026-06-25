@@ -8,6 +8,7 @@ test {
     _ = @import("require_fs.zig");
     _ = @import("closures.zig");
     _ = @import("ergonomics.zig");
+    _ = @import("declare.zig");
     _ = @import("marshalling.zig");
     _ = @import("usertype.zig");
     _ = @import("compile.zig");

@@ -101,6 +101,11 @@ pub const require = @import("luau/require.zig");
 /// Hand-emit Luau bytecode (`BytecodeBuilder`) + the bytecode graph.
 pub const bytecode = @import("luau/bytecode.zig");
 
+/// Project Zig types into Luau type definitions (so `analysis`/`luau-lsp`
+/// understand your host API). `declsFor(T, name)` builds a `declare` block.
+pub const luauType = @import("luau/declare.zig").luauType;
+pub const declsFor = @import("luau/declare.zig").declsFor;
+
 /// Route the C++ tooling's `operator new`/`delete` through a Zig allocator
 /// (process-global; the VM heap stays per-state via `Lua.init`).
 pub const setAllocator = @import("luau/alloc.zig").setAllocator;

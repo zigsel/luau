@@ -123,6 +123,7 @@ Run any with `zig build <name>`:
 | `analysis` | [examples/analysis.zig](examples/analysis.zig) | type-check, lint, autocomplete |
 | `config` | [examples/config.zig](examples/config.zig) | parse `.luaurc`, resolve path aliases |
 | `require` | [examples/require.zig](examples/require.zig) | install `require` via a `Resolver` over a virtual module tree |
+| `declare` | [examples/declare.zig](examples/declare.zig) | project Zig types into Luau type defs, type-check a mod |
 
 ## Architecture
 

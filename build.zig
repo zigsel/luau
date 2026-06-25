@@ -172,6 +172,7 @@ const examples = [_]Example{
     .{ .name = "analysis", .path = "examples/analysis.zig" },
     .{ .name = "config", .path = "examples/config.zig" },
     .{ .name = "require", .path = "examples/require.zig" },
+    .{ .name = "declare", .path = "examples/declare.zig" },
     .{ .name = "bytecode", .path = "examples/bytecode.zig" },
     .{ .name = "coroutines", .path = "examples/coroutines.zig" },
 };
