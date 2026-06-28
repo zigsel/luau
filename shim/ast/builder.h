@@ -68,6 +68,7 @@ LuauAstNode* luau_astbuild_unary(LuauAstBuilder* b, int op, LuauAstNode* e);
 LuauAstNode* luau_astbuild_call(LuauAstBuilder* b, LuauAstNode* func, LuauAstNode** args, int nargs);
 LuauAstNode* luau_astbuild_index_name(LuauAstBuilder* b, LuauAstNode* expr, const char* name);
 LuauAstNode* luau_astbuild_method_call(LuauAstBuilder* b, LuauAstNode* recv, const char* name, LuauAstNode** args, int nargs);
+void luau_astbuild_set_location(LuauAstNode* n, int line, int col);
 LuauAstNode* luau_astbuild_group(LuauAstBuilder* b, LuauAstNode* e);
 LuauAstNode* luau_astbuild_constant_integer(LuauAstBuilder* b, long long value);
 LuauAstNode* luau_astbuild_expr_local(LuauAstBuilder* b, LuauAstNode* local);

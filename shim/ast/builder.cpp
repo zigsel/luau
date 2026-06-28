@@ -18,7 +18,6 @@
 #include <cmath>
 #include <cctype>
 #include <exception>
-#include <string>
 
 using namespace Luau;
 
@@ -168,6 +167,11 @@ extern "C" LuauAstNode* luau_astbuild_method_call(LuauAstBuilder* b, LuauAstNode
     noTypes.data = nullptr;
     noTypes.size = 0;
     return wrap(b->allocator.alloc<AstExprCall>(kLoc, idx, a, /*self*/ true, noTypes, kLoc));
+}
+
+extern "C" void luau_astbuild_set_location(LuauAstNode* n, int line, int col) {
+    Position p{static_cast<unsigned>(line), static_cast<unsigned>(col)};
+    reinterpret_cast<AstNode*>(n)->location = Location{p, p};
 }
 
 extern "C" LuauAstNode* luau_astbuild_group(LuauAstBuilder* b, LuauAstNode* e) {
